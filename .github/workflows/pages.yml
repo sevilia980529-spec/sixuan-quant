@@ -1,0 +1,81 @@
+# 思旋 A股量化站 v5.1 —— 每日自动重建并发布到 GitHub Pages
+#
+# 架构（为什么这么绕）：
+#   1. 源码和每日数据的「真相源」在 CNB（sixuan.upa/sixuan-quant，公开仓库，可匿名 clone）
+#   2. 云盘持仓由 WorkBuddy 每日同步进 CNB 的 data/holdings.json
+#   3. 本工作流每天北京时间 17:00 从 CNB 拉最新代码 + 数据，自己重跑一次收盘更新，
+#      重建站点，然后发布到 GitHub Pages
+#   → 所以 GitHub 这边只放这一个工作流文件，不需要同步任何大文件。
+#
+# cron 用 UTC：09:00 UTC = 北京时间 17:00（收盘后，且晚于 CNB 自己的 16:30 流水线）
+
+name: 每日重建站点并发布 Pages
+
+on:
+  push:                      # 首次提交这个工作流文件时立即构建一次
+  workflow_dispatch:         # 允许在 Actions 页面手动点「Run workflow」
+  schedule:
+    - cron: '0 9 * * 1-5'    # 周一到周五 09:00 UTC = 北京 17:00
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      TZ: Asia/Shanghai
+    steps:
+      - name: 拉取 CNB 源码与数据
+        run: |
+          git clone --depth 1 https://cnb.cool/sixuan.upa/sixuan-quant.git src
+          echo "CNB HEAD = $(git -C src rev-parse --short HEAD)"
+          echo "持仓文件 updated = $(python3 -c "import json;print(json.load(open('src/data/holdings.json',encoding='utf-8')).get('updated'))" 2>/dev/null || echo '缺失')"
+
+      - name: 准备 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 收盘后更新（非交易日会自动跳过）
+        working-directory: src
+        run: |
+          pip install -q requests
+          python daily_update.py
+
+      - name: 重建站点
+        working-directory: src
+        run: python build_site.py
+
+      - name: 打构建标记（方便事后核对是否真的更新了）
+        working-directory: src
+        run: |
+          printf 'built_at=%s\ncnb_head=%s\n' \
+            "$(TZ=Asia/Shanghai date '+%Y-%m-%d %H:%M:%S')" \
+            "$(git rev-parse --short HEAD)" > docs/_build.txt
+          cat docs/_build.txt
+
+      - name: 配置 Pages
+        uses: actions/configure-pages@v5
+
+      - name: 打包 docs
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: src/docs
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: 发布到 GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
