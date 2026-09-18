@@ -8,6 +8,12 @@
 #   → 所以 GitHub 这边只放这一个工作流文件，不需要同步任何大文件。
 #
 # cron 用 UTC：09:00 UTC = 北京时间 17:00（收盘后，且晚于 CNB 自己的 16:30 流水线）
+#
+# ⚠️ 实测警告（2026-09-18）：GitHub 的 schedule 触发对这个仓库根本不工作。
+#    到点后盯了 20 分钟，schedule 事件 0 次；令牌 scope 是 repo+workflow，配置无误；
+#    工作流 state=active，push 和 workflow_dispatch 都能正常触发，唯独 cron 不触发。
+#    所以真正可靠的每日触发是外部任务调 workflow_dispatch（见 tools/gh_trigger_build.py）。
+#    下面这条 cron 留着只是以防哪天平台修好，不要指望它。
 
 name: 每日重建站点并发布 Pages
 
