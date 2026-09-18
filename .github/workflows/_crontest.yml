@@ -1,0 +1,9 @@
+name: cron 可用性测试
+on:
+  schedule:
+    - cron: '45 4 * * *'
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "cron ok at $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
