@@ -43,11 +43,17 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: 收盘后更新（非交易日会自动跳过）
+      - name: 收盘后更新（非交易日 / 未到收盘会自动跳过）
         working-directory: src
         run: |
-          pip install -q requests
-          python daily_update.py
+          HM=$(TZ=Asia/Shanghai date +%H%M)
+          if [ "$HM" -lt 1505 ]; then
+            echo "北京现在 $HM，还没收盘 —— 跳过数据更新，只重建页面"
+            echo "（避免把盘中价当成收盘价发上线）"
+          else
+            pip install -q requests
+            python daily_update.py
+          fi
 
       - name: 重建站点
         working-directory: src
